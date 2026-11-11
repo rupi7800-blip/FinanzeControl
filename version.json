@@ -1,0 +1,10 @@
+{
+  "version": "1.0.0",
+  "date": "11/11/2026",
+  "notes": [
+    "Prima versione di FinanzeControl",
+    "Foto di scontrini, fatture e ricevute con lettura automatica",
+    "Spese personali o familiari, categorie, grafico a torta",
+    "Alert di spesa massima per categoria e analisi consuntive"
+  ]
+}

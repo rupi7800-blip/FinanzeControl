@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>FinanzeControl</title>
+  <meta name="description" content="Spese personali e familiari: scontrini fotografati, categorie, budget e analisi consuntive.">
+  <meta name="theme-color" content="#0e3b3a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FinanzeControl">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="icons/logo.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/aggiornamenti.js" data-version="1.0.0"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img src="icons/logo.svg" alt="" width="34" height="34">
+      <div>
+        <h1>Finanze<span>Control</span></h1>
+        <small id="sottotitolo">Spese del mese</small>
+      </div>
+    </div>
+    <div class="top-act" data-update-slot></div>
+  </header>
+
+  <div class="mesebar" id="mesebar">
+    <button class="ico" id="mesePrev" aria-label="Mese precedente">‹</button>
+    <button class="mese" id="meseLabel"></button>
+    <button class="ico" id="meseNext" aria-label="Mese successivo">›</button>
+  </div>
+  <div class="chips ambiti" id="filtroAmbito">
+    <button data-a="tutte" class="on">Tutte</button>
+    <button data-a="personale">👤 Personali</button>
+    <button data-a="familiare">👨‍👩‍👧 Familiari</button>
+  </div>
+
+  <main>
+    <section id="v-mese" class="view on"></section>
+    <section id="v-spese" class="view"></section>
+    <section id="v-analisi" class="view"></section>
+    <section id="v-impost" class="view"></section>
+  </main>
+
+  <nav class="tabbar">
+    <button data-v="mese" class="on"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v8l6 4"/></svg><span>Mese</span></button>
+    <button data-v="spese"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/></svg><span>Spese</span></button>
+    <button class="fab" id="fab" aria-label="Nuova spesa"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button data-v="analisi"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Analisi</span></button>
+    <button data-v="impost"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Impostazioni</span></button>
+  </nav>
+
+  <!-- scelta sorgente nuova spesa -->
+  <div class="sheet-bg" id="sceltaBg" hidden>
+    <div class="sheet small">
+      <h3>Nuova spesa</h3>
+      <button class="big-opt" id="optFoto"><span>📷</span><div><b>Fotografa scontrino</b><small>Scontrino, fattura o ricevuta</small></div></button>
+      <button class="big-opt" id="optFile"><span>🖼️</span><div><b>Scegli immagine o PDF</b><small>Dalla galleria o dai file</small></div></button>
+      <button class="big-opt" id="optMano"><span>✍️</span><div><b>Inserisci a mano</b><small>Senza foto</small></div></button>
+      <button class="link" id="sceltaChiudi">Annulla</button>
+    </div>
+  </div>
+  <input type="file" id="inFoto" accept="image/*" capture="environment" hidden>
+  <input type="file" id="inFile" accept="image/*,application/pdf" hidden>
+  <input type="file" id="inBackup" accept="application/json,.json" hidden>
+
+  <!-- editor spesa -->
+  <div class="sheet-bg" id="editorBg" hidden>
+    <div class="sheet" id="editor"></div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+  <div class="alert-modal" id="alertModal" hidden></div>
+
+  <script src="js/db.js"></script>
+  <script src="js/ocr.js"></script>
+  <script src="js/grafici.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    }
+  </script>
+</body>
+</html>
