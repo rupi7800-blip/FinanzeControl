@@ -63,29 +63,10 @@
     c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
     return c;
   }
-  // scala di grigi + contrasto: aiuta molto con gli scontrini termici
-  function preparaOcr(src) {
-    const c = disegna(src, 2000);
-    const ctx = c.getContext('2d');
-    const d = ctx.getImageData(0, 0, c.width, c.height), p = d.data;
-    let min = 255, max = 0;
-    for (let i = 0; i < p.length; i += 4) {
-      const g = 0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2];
-      p[i] = g; if (g < min) min = g; if (g > max) max = g;
-    }
-    const span = Math.max(40, max - min);
-    for (let i = 0; i < p.length; i += 4) {
-      let g = (p[i] - min) * 255 / span;
-      g = g < 128 ? g * 0.75 : 255 - (255 - g) * 0.75;
-      p[i] = p[i + 1] = p[i + 2] = g;
-    }
-    ctx.putImageData(d, 0, 0);
-    return c;
-  }
   function miniatura(src) { return disegna(src, 1100).toDataURL('image/jpeg', 0.72); }
 
   /* ---------- numeri e date ---------- */
-  const RE_PREZZO = /(-?\d{1,3}(?:[.\s']\d{3})*[.,]\s?\d{2}|-?\d+[.,]\s?\d{2})(?!\d)/g;
+  const RE_PREZZO = /(-?\d{1,3}(?:[.\s']\d{3})*\s?[.,]\s?\d{2}|-?\d+\s?[.,]\s?\d{2})(?!\d)/g;
   function num(s) {
     s = String(s).replace(/[\s']/g, '');
     const neg = s.startsWith('-');
@@ -158,9 +139,20 @@
     'Zara', 'H&M', 'OVS', 'Calzedonia', 'Intimissimi', 'Primark', 'McDonald\'s', 'Burger King', 'Autogrill', 'Feltrinelli', 'Mondadori', 'Arcaplanet', 'Douglas', 'Sephora', 'Kiko', 'Enel', 'A2A', 'Hera', 'Iren', 'TIM', 'Vodafone', 'Iliad', 'Fastweb', 'Trenitalia', 'Trenord'];
   const NO_PROD = /(sub\s?tot|totale|\btot\.|importo|\biva\b|imponibile|imposta|aliquota|\bresto\b|contant|\bcarta\s+(di\s+)?(credito|debito)|bancomat|pagamento|elettronic|sconto\s*(totale|fidelity)|arrotond|n\.?\s*pezzi|\barticoli\b|scontrino|documento|fiscale|p\.?\s?iva|\bc\.?\s?f\.?\s|\bcassa\b|operatore|transaz|autorizz|\beuro\b|\beur\b|\bdata\b|\bora\b|\btel\b|\bvia\b|\bviale\b|\bpiazza\b|\bcorso\b|www|grazie|arrivederci|\bpunti\b|\bsaldo\b|\brt\b|matricola|\bcod\.|codice|\bresi\b|visa|mastercard|maestro|contactless|acquirer|\bstan\b|terminale|esercente|da pagare|\bnetto\b|pagato|totali)/i;
 
+  // versione della riga per cercare le parole chiave, tollerante agli errori tipici dell'OCR (T0TALE, TOTA1E, 5CONTO)
+  function chiave(r) {
+    return r.toLowerCase()
+      .replace(/([a-zà-ù])0|0([a-zà-ù])/g, (m, a, b) => (a || '') + 'o' + (b || ''))
+      .replace(/([a-zà-ù])[1|!]|[1|!]([a-zà-ù])/g, (m, a, b) => (a || '') + 'l' + (b || ''))
+      .replace(/([a-zà-ù])5|5([a-zà-ù])/g, (m, a, b) => (a || '') + 's' + (b || ''))
+      .replace(/tota[il1]e|t0tale|totaie|tqtale|totalf/g, 'totale');
+  }
+  function pulisciNome(n) {
+    return n.replace(/^[^a-zà-ù0-9]+/i, '').replace(/^[il|!]\s+(?=[a-zà-ù]{3})/i, '').replace(/[^a-zà-ù0-9%.)]+$/i, '').trim();
+  }
   function analizza(testo, idsCat) {
-    const righe = testo.split(/\r?\n/).map(r => r.replace(/\s+/g, ' ').trim()).filter(r => r.length > 1);
-    const minus = testo.toLowerCase();
+    const righe = testo.split(/\r?\n/).map(r => r.replace(/\s+/g, ' ').replace(/^[|!'‘’"“”`.,:;_-]+\s*/, '').trim()).filter(r => r.length > 1);
+    const minus = chiave(testo);
 
     // totale
     const PRIO = [
@@ -172,7 +164,8 @@
     let cand = [];
     righe.forEach((r, i) => {
       for (const [re, sc] of PRIO) {
-        if (!re.test(r) || ESCL.test(r)) continue;
+        const kr = chiave(r);
+        if (!re.test(kr) || ESCL.test(kr)) continue;
         let pr = prezziRiga(r);
         if (!pr.length && righe[i + 1]) pr = prezziRiga(righe[i + 1]);
         if (pr.length) cand.push({ v: pr[pr.length - 1].v, sc, i });
@@ -182,8 +175,10 @@
     cand = cand.filter(c => c.v > 0 && c.v < 100000);
     let importo = null;
     if (cand.length) {
-      const top = Math.max(...cand.map(c => c.sc));
-      importo = Math.max(...cand.filter(c => c.sc === top).map(c => c.v));
+      // stesso valore su più righe (TOTALE, PAGAMENTO, IMPORTO PAGATO) = più affidabile
+      const peso = {};
+      cand.forEach(c => { peso[c.v] = (peso[c.v] || 0) + c.sc; });
+      importo = Number(Object.keys(peso).sort((a, b) => peso[b] - peso[a] || b - a)[0]);
     } else {
       const tutti = [];
       righe.forEach(r => { if (!/contant|resto|carta|bancomat|iva|imponibile/i.test(r)) prezziRiga(r).forEach(p => tutti.push(p.v)); });
@@ -194,10 +189,11 @@
     // fornitore
     let fornitore = null;
     for (const c of CATENE) {
-      const e = c.replace(/[.*+?^${}()|[\]\\&']/g, m => '\\' + m);
+      // lettere che l'OCR confonde spesso: i/l/1, o/0, s/5, e/c
+      const e = c.toLowerCase().split('').map(ch => ({ i: '[il1|!]', l: '[il1|!]', o: '[o0]', s: '[s5]', e: '[ec]', '.': '\\.?', ' ': '\\s?', "'": ".?" }[ch] || ch.replace(/[*+?^${}()|[\]\\&]/g, m => '\\' + m))).join('');
       const re = new RegExp('(^|[^a-z])' + e + (c.length <= 4 ? '(?![a-z])' : ''), 'i');
       const testa = righe.slice(0, 8).join('\n');
-      if (re.test(testa) || (c.length > 4 && re.test(minus))) { fornitore = c; break; }
+      if (re.test(testa) || (c.length > 4 && re.test(testo))) { fornitore = c; break; }
     }
     if (!fornitore) {
       for (const r of righe.slice(0, 7)) {
@@ -214,7 +210,7 @@
     const fine = cand.length ? Math.min(...cand.map(c => c.i)) : righe.length;
     const prodotti = [];
     righe.slice(0, fine).forEach(r => {
-      if (NO_PROD.test(r) || /\d[.,]\d{2}\s*(l|lt|litri)\b/i.test(r)) return;
+      if (NO_PROD.test(chiave(r)) || /\d[.,]\d{2}\s*(l|lt|litri)\b/i.test(r)) return;
       const pr = prezziRiga(r);
       if (!pr.length) return;
       const ult = pr[pr.length - 1];
@@ -226,7 +222,8 @@
         prodotti[prodotti.length - 1].prezzo = ult.v; return;
       }
       if (ult.v === 0 || Math.abs(ult.v) > 10000) return;
-      nome = nome.replace(/\s+[A-Z]$/, '').slice(0, 60);
+      nome = pulisciNome(nome.replace(/\s+[A-Z]$/, '')).slice(0, 60);
+      if ((nome.match(/[a-zà-ù]/gi) || []).length < 2) return;
       prodotti.push({ nome: nome.charAt(0).toUpperCase() + nome.slice(1).toLowerCase(), prezzo: ult.v });
     });
 
@@ -237,18 +234,51 @@
 
   /* ---------- motori ---------- */
   let worker = null;
-  async function tesseract(canvas, avanzamento) {
+  async function preparaWorker(avanzamento) {
     await script(TESSERACT);
     if (!worker) {
       avanzamento && avanzamento('Preparo il lettore (solo la prima volta)…', 0);
       worker = await Tesseract.createWorker('ita', 1, {
-        logger: m => { if (m.status === 'recognizing text' && avanzamento) avanzamento('Leggo lo scontrino…', m.progress); }
+        logger: m => { if (m.status === 'recognizing text' && avanzamento && avanzamento.fase) avanzamento(avanzamento.fase, m.progress); }
       });
-      await worker.setParameters({ preserve_interword_spaces: '1', tessedit_pageseg_mode: '6' });
     }
-    avanzamento && avanzamento('Leggo lo scontrino…', 0);
-    const r = await worker.recognize(canvas);
-    return r.data.text || '';
+    return worker;
+  }
+  async function riconosci(canvas, psm, avanzamento, fase) {
+    const w = await preparaWorker(avanzamento);
+    if (avanzamento) avanzamento.fase = fase;
+    await w.setParameters({ preserve_interword_spaces: '1', tessedit_pageseg_mode: String(psm), user_defined_dpi: '300' });
+    const r = await w.recognize(canvas);
+    return { testo: r.data.text || '', conf: r.data.confidence || 0 };
+  }
+  // quanto "sembra uno scontrino" il testo letto: serve a scegliere il tentativo migliore
+  function qualita(t, conf) {
+    const prezzi = (t.match(/\d[.,]\s?\d{2}(?!\d)/g) || []).length;
+    const parole = (t.match(/\b(totale|iva|euro|documento|commerciale|pagamento|subtotale|contanti|resto|importo|fattura|ricevuta)\b/gi) || []).length;
+    return conf + Math.min(prezzi, 25) * 2 + parole * 6;
+  }
+  async function tesseract(sorgente, avanzamento, opz = {}) {
+    await preparaWorker(avanzamento);
+    avanzamento && avanzamento('Raddrizzo e pulisco la foto…', 0);
+    await new Promise(r => setTimeout(r, 30));
+    const prep = window.Immagine.prepara(sorgente, opz);
+    let best = await riconosci(prep.canvas, 6, avanzamento, 'Leggo lo scontrino…');
+    best.q = qualita(best.testo, best.conf);
+    // poco convincente: provo capovolto e con un'altra segmentazione
+    if (best.conf < 70) {
+      const tentativi = [
+        () => riconosci(prep.grigio, 6, avanzamento, 'Secondo tentativo…'),
+        () => riconosci(window.Immagine.ruota(prep.canvas, 180), 6, avanzamento, 'Provo a capovolgerlo…'),
+        () => riconosci(prep.canvas, 4, avanzamento, 'Ultimo tentativo…')
+      ];
+      for (const t of tentativi) {
+        const r = await t(); r.q = qualita(r.testo, r.conf);
+        if (window.FC_DEBUG) console.log('DBG tentativo', Math.round(r.conf), Math.round(r.q), 'vs', Math.round(best.q));
+        if (r.q > best.q) best = r;
+        if (best.conf >= 75) break;
+      }
+    }
+    return { testo: best.testo, conf: best.conf, info: prep.info };
   }
 
   async function gemini(canvas, cfg, categorie) {
@@ -282,10 +312,12 @@
   }
 
   /* API pubblica: leggi(file, impostazioni, categorie, avanzamento) */
-  async function leggi(file, cfg, categorie, avanzamento) {
+  async function leggi(file, cfg, categorie, avanzamento, opz = {}) {
     const ids = categorie.map(c => c.id);
     let sorgente, testoPdf = '';
-    if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+    if (file instanceof HTMLCanvasElement || file instanceof HTMLImageElement) {
+      sorgente = file;
+    } else if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
       avanzamento && avanzamento('Apro il PDF…', 0);
       const p = await pdfToCanvas(file);
       sorgente = p.canvas; testoPdf = p.testo;
@@ -304,12 +336,30 @@
       }
     }
     if (!dati) {
-      const testo = testoPdf.replace(/\s/g, '').length > 40 ? testoPdf : await tesseract(preparaOcr(sorgente), avanzamento);
+      let testo, conf = 90, info = {};
+      if (testoPdf.replace(/\s/g, '').length > 40) testo = testoPdf;
+      else ({ testo, conf, info } = await tesseract(sorgente, avanzamento, opz));
       dati = analizza(testo, ids);
+      dati.conf = conf;
+      // lettura troppo povera: meglio campi vuoti che dati inventati
+      dati.illeggibile = !dati.importo && dati.prodotti.length < 2 || conf < 40 && !dati.importo;
+      if (dati.illeggibile) { dati.fornitore = CATENE.find(c => new RegExp('\\b' + c + '\\b', 'i').test(testo)) || null; dati.prodotti = []; dati.importo = null; }
+      dati.lontana = info.passo && info.passo < 10; // caratteri piccolissimi nella foto
+      if (!dati.illeggibile && dati.importo) {
+        // il totale non può essere più piccolo del prodotto più caro
+        const maxP = Math.max(0, ...dati.prodotti.map(p => p.prezzo));
+        if (maxP > dati.importo * 1.01) dati.dubbio = true;
+      }
     }
     dati.foto = foto;
     return dati;
   }
 
-  window.OCR = { leggi, analizza, indovinaCategoria, miniatura: f => fileToImage(f).then(miniatura) };
+  // apre un file (immagine o PDF) o una foto salvata e restituisce qualcosa di disegnabile
+  async function carica(f) {
+    if (typeof f === 'string') { const img = new Image(); img.src = f; await img.decode(); return img; }
+    if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name || '')) return (await pdfToCanvas(f)).canvas;
+    return fileToImage(f);
+  }
+  window.OCR = { leggi, analizza, indovinaCategoria, carica, miniatura: f => carica(f).then(miniatura) };
 })();

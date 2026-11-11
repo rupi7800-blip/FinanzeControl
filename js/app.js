@@ -264,7 +264,7 @@
     renderEditor();
     if (ed.haFoto && !ed._foto) DB.foto(ed.id).then(f => { if (ed && f) { ed._foto = f; renderEditor(); } });
   }
-  function chiudiEditor() { $('#editorBg').hidden = true; document.body.style.overflow = ''; ed = null; }
+  function chiudiEditor() { $('#editorBg').hidden = true; document.body.style.overflow = ''; ed = null; rifaiFoto = false; }
 
   function renderEditor() {
     const e = $('#editor');
@@ -273,7 +273,11 @@
     e.innerHTML = `
       <div class="ed-head"><h3>${ed._nuova ? 'Nuova spesa' : 'Modifica spesa'}</h3><button class="x" id="edX" aria-label="Chiudi">×</button></div>
       ${ed._foto ? `<div class="foto"><img src="${ed._foto}" alt="Scontrino" id="edImg"></div>` : ''}
-      ${ed._ocr ? `<div class="ocr-stato ${ed._ocr.err ? 'err' : ''}">${ed._ocr.err ? '⚠️' : ed._ocr.fatto ? '✅' : '<span class="spin"></span>'}<span>${esc(ed._ocr.msg)}</span></div>` : ''}
+      ${ed._ocr ? `<div class="ocr-stato ${ed._ocr.err ? 'err' : ed._ocr.avviso ? 'avv' : ''}">${ed._ocr.err ? '⚠️' : ed._ocr.fatto ? (ed._ocr.avviso ? '🔎' : '✅') : '<span class="spin"></span>'}<span>${esc(ed._ocr.msg)}</span></div>` : ''}
+      ${ed._ocr && ed._ocr.consigli ? `<ul class="consigli">${ed._ocr.consigli.map(c => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
+      ${(ed._foto || ed._file) && (!ed._ocr || ed._ocr.fatto || ed._ocr.err) ? `<div class="btns ocr-azioni">
+        <button class="btn sec sm" id="edRitaglia">✂️ Ritaglia / ruota e rileggi</button>
+        ${ed._nuova ? '<button class="btn sec sm" id="edRifai">📷 Rifai foto</button>' : ''}</div>` : ''}
       <div class="f"><label for="edImp">Importo</label><input class="in importo" id="edImp" inputmode="decimal" placeholder="0,00" value="${fmtIn(ed.importo)}"></div>
       <div class="f"><span class="lab">Tipo di spesa</span><div class="seg" id="edAmb">
         <button data-a="personale" class="${ed.ambito === 'personale' ? 'on' : ''}">👤 Personale</button>
@@ -310,6 +314,8 @@
     $$('#edProd [data-rm]').forEach(b => b.onclick = () => { ed.prodotti.splice(+b.dataset.rm, 1); renderEditor(); });
     $('#edAddP').onclick = () => { ed.prodotti.push({ nome: '', prezzo: 0 }); renderEditor(); const l = $$('#edProd .pn'); l[l.length - 1].focus(); };
     const us = $('#edUsaSomma'); if (us) us.onclick = () => { ed.importo = Math.round(ed.prodotti.reduce((t, p) => t + (p.prezzo || 0), 0) * 100) / 100; renderEditor(); };
+    const rt = $('#edRitaglia'); if (rt) rt.onclick = apriRitaglio;
+    const rf = $('#edRifai'); if (rf) rf.onclick = () => { rifaiFoto = true; $('#inFoto').click(); };
     $('#edOk').onclick = salvaEditor;
     const del = $('#edDel'); if (del) del.onclick = eliminaEditor;
   }
@@ -328,7 +334,7 @@
       ambito: ed.ambito, note: ed.note.trim(), haFoto: !!ed._foto, creata: ed.creata || Date.now(), modificata: Date.now() };
     try {
       await DB.salva(sp);
-      if (ed._foto && ed._nuova) await DB.salvaFoto(sp.id, ed._foto).catch(() => {});
+      if (ed._foto) await DB.salvaFoto(sp.id, ed._foto).catch(() => {});
     } catch (e) { toast('Errore nel salvataggio'); return; }
     const i = spese.findIndex(s => s.id === sp.id);
     // se era un'altra categoria/mese, il confronto "prima" deve escludere la vecchia versione: va bene così
@@ -349,14 +355,38 @@
   }
 
   /* ---------- nuova spesa da foto ---------- */
+  let rifaiFoto = false;
+  const CONSIGLI = [
+    'Appoggia lo scontrino su un fondo scuro e inquadralo per intero',
+    'Avvicinati: lo scontrino deve riempire quasi tutta la foto',
+    'Luce buona e senza flash (il riflesso cancella il testo)',
+    'Tieni il telefono parallelo allo scontrino e ben fermo'
+  ];
   async function daFile(file) {
     if (!file) return;
+    if (rifaiFoto && ed) { rifaiFoto = false; ed._file = file; ed._foto = null; return leggiInEditor(file); }
+    rifaiFoto = false;
     const sp = nuovaSpesa();
     apriEditor(sp, { nuova: true, ocr: { msg: 'Preparo l\'immagine…' } });
-    const set = (msg, p) => { if (!ed || ed.id !== sp.id) return; ed._ocr = { msg: msg + (p ? ' ' + Math.round(p * 100) + '%' : '') }; const st = $('.ocr-stato span:last-child'); if (st) st.textContent = ed._ocr.msg; else renderEditor(); };
+    ed._file = file;
+    leggiInEditor(file);
+  }
+  async function leggiInEditor(sorgente, opz = {}) {
+    const id = ed.id;
+    ed._ocr = { msg: 'Preparo l\'immagine…' }; renderEditor();
+    const set = (msg, p) => { if (!ed || ed.id !== id) return; ed._ocr = { msg: msg + (p ? ' ' + Math.round(p * 100) + '%' : '') }; const st = $('.ocr-stato span:last-child'); if (st) st.textContent = ed._ocr.msg; else renderEditor(); };
     try {
-      const r = await OCR.leggi(file, S, S.categorie, set);
-      if (!ed || ed.id !== sp.id) return;
+      const r = await OCR.leggi(sorgente, S, S.categorie, set, opz);
+      if (!ed || ed.id !== id) return;
+      ed._foto = r.foto;
+      if (r.illeggibile) {
+        ed._ocr = { err: true, fatto: true, testo: r.testo,
+          msg: r.lontana ? 'Il testo nella foto è troppo piccolo per leggerlo.' : 'Non riesco a leggere questa foto.',
+          consigli: CONSIGLI.concat(S.ocrMotore !== 'gemini' ? ['Per scontrini rovinati o sbiaditi attiva in Impostazioni la lettura "Avanzata"'] : []) };
+        if (r.fornitore) ed.fornitore = r.fornitore;
+        renderEditor();
+        return;
+      }
       // l'app impara: se hai già assegnato una categoria a questo fornitore, usa quella
       let catId = r.categoria;
       if (r.fornitore) {
@@ -366,20 +396,87 @@
       const somP = r.prodotti.reduce((t, p) => t + p.prezzo, 0);
       ed.importo = r.importo || Math.round(somP * 100) / 100 || 0;
       if (r.data) ed.data = r.data;
-      ed.fornitore = r.fornitore || '';
+      ed.fornitore = r.fornitore || ed.fornitore || '';
       ed.piva = r.piva || '';
       ed.prodotti = r.prodotti;
       ed.categoria = catId;
-      ed._foto = r.foto;
+      const mancano = [!r.importo && 'importo', !r.fornitore && 'fornitore', !r.data && 'data'].filter(Boolean);
       const trovati = [r.importo ? 'importo' : null, r.fornitore ? 'fornitore' : null, r.data ? 'data' : null, r.prodotti.length ? r.prodotti.length + ' prodotti' : null].filter(Boolean);
-      ed._ocr = { fatto: true, msg: trovati.length ? 'Letti: ' + trovati.join(', ') + '. Controlla e salva.' : 'Non sono riuscito a leggere bene: completa a mano.', err: !trovati.length, testo: r.testo };
+      let msg = 'Letti: ' + trovati.join(', ') + '.';
+      if (mancano.length) msg += ' Da completare: ' + mancano.join(', ') + '.';
+      if (r.dubbio) msg += ' Controlla il totale: sembra più basso di un prodotto.';
+      if (!mancano.length && !r.dubbio) msg += ' Controlla e salva.';
+      ed._ocr = { fatto: true, avviso: mancano.length > 0 || r.dubbio, msg, testo: r.testo,
+        consigli: mancano.length >= 2 ? ['Se è letto male prova "Ritaglia / ruota e rileggi" stringendo il riquadro sullo scontrino'] : null };
       renderEditor();
     } catch (e) {
-      if (!ed || ed.id !== sp.id) return;
-      try { ed._foto = await OCR.miniatura(file); } catch (x) { /* PDF: niente anteprima */ }
-      ed._ocr = { err: true, msg: (e && e.message) || 'Lettura non riuscita: inserisci i dati a mano.' };
+      if (!ed || ed.id !== id) return;
+      try { if (!ed._foto) ed._foto = await OCR.miniatura(sorgente instanceof File ? sorgente : ed._file); } catch (x) { /* niente anteprima */ }
+      ed._ocr = { err: true, fatto: true, msg: (e && e.message) || 'Lettura non riuscita: inserisci i dati a mano.' };
       renderEditor();
     }
+  }
+
+  /* ---------- ritaglio e rotazione manuale ---------- */
+  let crop = null;
+  async function apriRitaglio() {
+    const bg = $('#cropBg');
+    bg.hidden = false;
+    $('#cropInfo').textContent = 'Carico la foto…';
+    let src;
+    try { src = await OCR.carica(ed._file || ed._foto); } catch (e) { bg.hidden = true; toast('Foto non disponibile'); return; }
+    crop = { work: Immagine.maxLato(src, 3200), box: { x: 0.04, y: 0.04, w: 0.92, h: 0.92 } };
+    disegnaRitaglio();
+  }
+  function disegnaRitaglio() {
+    const cv = $('#cropCv'), area = $('#cropArea');
+    const W = area.clientWidth, H = area.clientHeight, w = crop.work;
+    const k = Math.min(W / w.width, H / w.height);
+    cv.width = Math.round(w.width * k); cv.height = Math.round(w.height * k);
+    cv.getContext('2d').drawImage(w, 0, 0, cv.width, cv.height);
+    crop.k = k;
+    posBox();
+    $('#cropInfo').textContent = 'Trascina gli angoli sui bordi dello scontrino';
+  }
+  function posBox() {
+    const cv = $('#cropCv'), b = crop.box, el = $('#cropBox');
+    el.style.left = (cv.offsetLeft + b.x * cv.width) + 'px';
+    el.style.top = (cv.offsetTop + b.y * cv.height) + 'px';
+    el.style.width = (b.w * cv.width) + 'px';
+    el.style.height = (b.h * cv.height) + 'px';
+  }
+  function legaRitaglio() {
+    const el = $('#cropBox');
+    let drag = null;
+    el.addEventListener('pointerdown', e => {
+      const cv = $('#cropCv');
+      drag = { h: e.target.dataset.h || 'm', x: e.clientX, y: e.clientY, b: { ...crop.box }, W: cv.width, H: cv.height };
+      el.setPointerCapture(e.pointerId); e.preventDefault();
+    });
+    el.addEventListener('pointermove', e => {
+      if (!drag) return;
+      const dx = (e.clientX - drag.x) / drag.W, dy = (e.clientY - drag.y) / drag.H, b = { ...drag.b }, MIN = 0.08;
+      if (drag.h === 'm') { b.x = Math.min(1 - b.w, Math.max(0, b.x + dx)); b.y = Math.min(1 - b.h, Math.max(0, b.y + dy)); }
+      else {
+        if (drag.h.includes('w')) { const nx = Math.min(b.x + b.w - MIN, Math.max(0, b.x + dx)); b.w += b.x - nx; b.x = nx; }
+        if (drag.h.includes('e')) b.w = Math.min(1 - b.x, Math.max(MIN, b.w + dx));
+        if (drag.h.includes('n')) { const ny = Math.min(b.y + b.h - MIN, Math.max(0, b.y + dy)); b.h += b.y - ny; b.y = ny; }
+        if (drag.h.includes('s')) b.h = Math.min(1 - b.y, Math.max(MIN, b.h + dy));
+      }
+      crop.box = b; posBox();
+    });
+    const fine = () => drag = null;
+    el.addEventListener('pointerup', fine); el.addEventListener('pointercancel', fine);
+    $('#cropSx').onclick = () => { crop.work = Immagine.ruota(crop.work, -90, '#000'); crop.box = { x: 0.04, y: 0.04, w: 0.92, h: 0.92 }; disegnaRitaglio(); };
+    $('#cropDx').onclick = () => { crop.work = Immagine.ruota(crop.work, 90, '#000'); crop.box = { x: 0.04, y: 0.04, w: 0.92, h: 0.92 }; disegnaRitaglio(); };
+    $('#cropNo').onclick = () => { $('#cropBg').hidden = true; crop = null; };
+    $('#cropOk').onclick = () => {
+      const w = crop.work, b = crop.box;
+      const out = Immagine.ritaglia(w, { x: b.x * w.width, y: b.y * w.height, w: b.w * w.width, h: b.h * w.height });
+      $('#cropBg').hidden = true; crop = null;
+      if (ed) leggiInEditor(out, { ritaglio: false });
+    };
+    window.addEventListener('resize', () => { if (crop && !$('#cropBg').hidden) disegnaRitaglio(); });
   }
 
   /* ---------- ANALISI CONSUNTIVE ---------- */
@@ -683,6 +780,7 @@
 
   async function avvio() {
     lega();
+    legaRitaglio();
     try { spese = await DB.tutte(); } catch (e) { toast('Archivio non disponibile (modalità privata?)'); spese = []; }
     vai('mese');
     // avviso all'apertura se un limite del mese è già oltre la soglia

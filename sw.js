@@ -4,7 +4,7 @@
    una versione nuova. Non serve cambiare questo file a ogni rilascio. */
 const CACHE = 'finanzecontrol-app';
 const ASSETS = [
-  './', './index.html', './css/style.css', './js/app.js', './js/db.js', './js/ocr.js', './js/grafici.js', './js/aggiornamenti.js',
+  './', './index.html', './css/style.css', './js/app.js', './js/db.js', './js/immagine.js', './js/ocr.js', './js/grafici.js', './js/aggiornamenti.js',
   './manifest.webmanifest', './icons/logo.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-32.png', './icons/icon-180.png'
 ];
 

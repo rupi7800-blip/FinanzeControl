@@ -1,10 +1,10 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "date": "11/11/2026",
   "notes": [
-    "Prima versione di FinanzeControl",
-    "Foto di scontrini, fatture e ricevute con lettura automatica",
-    "Spese personali o familiari, categorie, grafico a torta",
-    "Alert di spesa massima per categoria e analisi consuntive"
+    "Lettura degli scontrini molto migliorata: ritaglia lo sfondo, raddrizza la foto e toglie le ombre",
+    "Riconosce anche scontrini girati, storti, stropicciati o sbiaditi",
+    "Nuovo: ritaglia e ruota a mano la foto e rileggila",
+    "Se la foto non è leggibile te lo dice e ti dà i consigli per rifarla"
   ]
 }

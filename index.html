@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
-  <script src="js/aggiornamenti.js" data-version="1.0.0"></script>
+  <script src="js/aggiornamenti.js" data-version="1.1.0"></script>
 </head>
 <body>
   <header class="top">
@@ -64,6 +64,8 @@
       <button class="big-opt" id="optFoto"><span>📷</span><div><b>Fotografa scontrino</b><small>Scontrino, fattura o ricevuta</small></div></button>
       <button class="big-opt" id="optFile"><span>🖼️</span><div><b>Scegli immagine o PDF</b><small>Dalla galleria o dai file</small></div></button>
       <button class="big-opt" id="optMano"><span>✍️</span><div><b>Inserisci a mano</b><small>Senza foto</small></div></button>
+      <div class="consigli-box"><b>Per una lettura perfetta</b>
+        <ul class="consigli"><li>Fondo scuro, scontrino intero nella foto</li><li>Avvicinati: deve riempire quasi tutto lo schermo</li><li>Buona luce, niente flash né riflessi</li><li>Telefono parallelo allo scontrino, ben fermo</li></ul></div>
       <button class="link" id="sceltaChiudi">Annulla</button>
     </div>
   </div>
@@ -76,10 +78,26 @@
     <div class="sheet" id="editor"></div>
   </div>
 
+  <!-- ritaglio e rotazione -->
+  <div class="crop-bg" id="cropBg" hidden>
+    <div class="crop-top"><b>Ritaglia lo scontrino</b><small id="cropInfo"></small></div>
+    <div class="crop-area" id="cropArea">
+      <canvas id="cropCv"></canvas>
+      <div class="crop-box" id="cropBox"><i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i><i data-h="n"></i><i data-h="s"></i><i data-h="w"></i><i data-h="e"></i></div>
+    </div>
+    <div class="crop-bar">
+      <button class="btn sec sm" id="cropSx" aria-label="Ruota a sinistra">⟲ 90°</button>
+      <button class="btn sec sm" id="cropDx" aria-label="Ruota a destra">⟳ 90°</button>
+      <button class="btn sec sm" id="cropNo">Annulla</button>
+      <button class="btn sm" id="cropOk">Leggi</button>
+    </div>
+  </div>
+
   <div class="toast" id="toast" hidden></div>
   <div class="alert-modal" id="alertModal" hidden></div>
 
   <script src="js/db.js"></script>
+  <script src="js/immagine.js"></script>
   <script src="js/ocr.js"></script>
   <script src="js/grafici.js"></script>
   <script src="js/app.js"></script>
